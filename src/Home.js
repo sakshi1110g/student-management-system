@@ -9,7 +9,7 @@ function Home() {
 
   const loadData = () => {
 
-    let url = "http://localhost:9000/gs";
+    let url = "https://student-management-system-5-t63p.onrender.com";
 
     axios.get(url)
     .then(res => {
