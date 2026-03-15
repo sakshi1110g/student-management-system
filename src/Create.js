@@ -81,7 +81,7 @@ fd.append("name", name);
 fd.append("marks", marks);
 fd.append("file", file);
 
-let url = "http://localhost:9000/ss";
+let url = "https://student-management-system-5-t63p.onrender.com";
 
 axios.post(url, fd, {
   headers: { "Content-Type": "multipart/form-data" }
