@@ -1,100 +1,49 @@
-const express = require("express");
-const cors = require("cors");
-const mysql = require("mysql2");
-const multer = require("multer");
+// @ts-check
 
-const app = express();
+import fs from 'fs'
+import path from 'path'
+import { resolveDefaultConfigPath } from '../../util/resolveConfigPath.js'
+import { createProcessor } from './plugin.js'
 
-app.use(cors());
-app.use(express.json());
+export async function build(args) {
+  let input = args['--input']
+  let shouldWatch = args['--watch']
 
-const con = mysql.createConnection({
-  host: "sql12.freesqldatabase.com",
-  user: "sql12820108",
-  password: "BU3RnKZeKb",
-  database: "sql12820108"
-});
+  // TODO: Deprecate this in future versions
+  if (!input && args['_'][1]) {
+    console.error('[deprecation] Running tailwindcss without -i, please provide an input file.')
+    input = args['--input'] = args['_'][1]
+  }
 
+  if (input && input !== '-' && !fs.existsSync((input = path.resolve(input)))) {
+    console.error(`Specified input file ${args['--input']} does not exist.`)
+    process.exit(9)
+  }
 
-// STORE FILE IN MEMORY
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+  if (args['--config'] && !fs.existsSync((args['--config'] = path.resolve(args['--config'])))) {
+    console.error(`Specified config file ${args['--config']} does not exist.`)
+    process.exit(9)
+  }
 
+  // TODO: Reference the @config path here if exists
+  let configPath = args['--config'] ? args['--config'] : resolveDefaultConfigPath()
 
-// SAVE STUDENT
-app.post("/ss", upload.single("file"), (req, res) => {
+  let processor = await createProcessor(args, configPath)
 
-  let sql = "insert into student values(?, ?, ?, ?, ?)";
-  let data = [
-    req.body.rno,
-    req.body.name,
-    req.body.marks,
-    req.file.buffer,
-    req.file.mimetype
-  ];
-
-  con.query(sql, data, (error, result) => {
-
-    if (error)
-      res.send(error);
-    else
-      res.send(result);
-
-  });
-
-});
-
-
-// GET STUDENTS
-app.get("/gs", (req, res) => {
-
-  let sql = "select rno,name,marks,file,mime from student";
-
-  con.query(sql, (error, result) => {
-
-    if (error)
-      res.send(error);
-    else {
-
-      let alldata = result.map((row) => {
-
-        return {
-          rno: row.rno,
-          name: row.name,
-          marks: row.marks,
-          file: row.file.toString("base64"),
-          mime: row.mime
-        };
-
-      });
-
-      res.send(alldata);
+  if (shouldWatch) {
+    // Abort the watcher if stdin is closed to avoid zombie processes
+    // You can disable this behavior with --watch=always
+    if (args['--watch'] !== 'always') {
+      process.stdin.on('end', () => process.exit(0))
     }
 
-  });
+    process.stdin.resume()
 
-});
-
-
-// DELETE STUDENT
-app.delete("/ds", (req, res) => {
-
-  let sql = "delete from student where rno = ?";
-  let data = [req.body.rno];
-
-  con.query(sql, data, (error, result) => {
-
-    if (error)
-      res.send(error);
-    else
-      res.send(result);
-
-  });
-
-});
-
-
-// SERVER
-app.listen(9000, () => {
-  console.log("Ready to serve @ 9000");
-});
+    await processor.watch()
+  } else {
+    await processor.build().catch((e) => {
+      console.error(e)
+      process.exit(1)
+    })
+  }
+}
